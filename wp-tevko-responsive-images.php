@@ -301,31 +301,83 @@ function tevkori_get_src_sizes( $id, $size = 'thumbnail' ) {
 }
 
 /**
- * Filter for extending image tag to include srcset attribute.
+ * Filter for the_content to add sizes and srcset attributes to images.
  *
- * @see images_send_to_editor
- * @return string HTML for image.
+ * @since 3.0
+ *
+ * @param string $content The raw post content to be filtered.
  */
-function tevkori_extend_image_tag( $html, $id, $caption, $title, $align, $url, $size, $alt ) {
-	add_filter( 'editor_max_image_size', 'tevkori_editor_image_size' );
+function tevkori_filter_content_images( $content ) {
+	return preg_replace_callback(
+		'/<img\s([^>]+)>/i',
+		
+		// Don't use an anonymous callback function because it isn't supported by PHP 5.2.
+		'tevkori_filter_content_images_callback',
+		$content
+	);
+}
+add_filter( 'the_content', 'tevkori_filter_content_images', 999, 1 );
 
-	// Get the srcset attribute.
-	$srcset = tevkori_get_srcset_string( $id, $size );
+/**
+ * Callback function for tevkori_filter_content_images.
+ *
+ * @since 3.0
+ *
+ * @see tevkori_filter_content_images
+ * @param array $matches Array containing the regular expression matches.
+ */
+function tevkori_filter_content_images_callback( $matches ) {
+	$atts = $matches[1];
+	$sizes = $srcset = '';
 
-	remove_filter( 'editor_max_image_size', 'tevkori_editor_image_size' );
+	// Get the value of the class attribute.
+	preg_match( '/class="([^"]+)"/i', $atts, $classes );
 
-	if ( $srcset ) {
+	if ( $classes ) {
+		
+		// Grab ID and size info from core classes.
+		preg_match( '/wp-image-([0-9]+)/i', $classes[1], $id );
+		preg_match( '/size-([^\s|"]+)\s|"/i', $classes[1], $size );
 
-		// Build the data-sizes attribute if sizes were returned.
-		$sizes = tevkori_get_sizes( $id, $size );
-		$sizes = $sizes ? 'data-sizes="' . $sizes . '"' : '';
+		if ( $id ) {
+			$id = (int) $id[1];
 
-		$html = preg_replace( '/(src\s*=\s*"(.+?)")/', '$1 ' . $sizes . ' ' . $srcset, $html );
+			// If a class with size name is present, use it.
+			if ( $size ) {
+				$size = $size[1];
+
+			// Otherwise create an array with the values from the width and height attributes.
+			} else {
+				preg_match( '/width="([0-9]+)"/', $atts, $width );
+				preg_match( '/height="([0-9]+)"/', $atts, $height );
+
+				$size = array(
+					(int) $width[1],
+					(int) $height[1]
+				);
+			}
+
+			if ( $size ) {
+				
+				// Get the srcset string.
+				$srcset_string = tevkori_get_srcset_string( $id, $size );
+
+				if ( $srcset_string && ! preg_match( '/srcset="([^"]+)"/i', $atts ) ) {
+					$srcset = ' ' . $srcset_string;
+
+					// Get the sizes string.
+					$sizes_string = tevkori_get_sizes_string( $id, $size );
+					
+					if ( $sizes_string && ! preg_match( '/sizes="([^"]+)"/i', $atts ) ) {
+						$sizes = ' ' . $sizes_string;
+					}
+				}
+			}
+		}
 	}
 
-	return $html;
+	return '<img ' . $atts . $sizes . $srcset . '>';
 }
-add_filter( 'image_send_to_editor', 'tevkori_extend_image_tag', 0, 8 );
 
 /**
  * Filter to add srcset and sizes attributes to post thumbnails and gallery images.
@@ -357,69 +409,17 @@ function tevkori_filter_attachment_image_attributes( $attr, $attachment, $size )
 add_filter( 'wp_get_attachment_image_attributes', 'tevkori_filter_attachment_image_attributes', 0, 3 );
 
 /**
- * Disable the editor size constraint applied for images in TinyMCE.
- *
- * @return array A width & height array so large it shouldn't constrain reasonable images.
- */
-function tevkori_editor_image_size() {
-	return array( 99999, 99999 );
-}
-
-/**
- * Load admin scripts.
- *
- * @param string $hook Admin page file name.
- */
-function tevkori_load_admin_scripts( $hook ) {
-	if ( $hook == 'post.php' || $hook == 'post-new.php' ) {
-		wp_enqueue_script( 'wp-tevko-responsive-images', plugin_dir_url( __FILE__ ) . 'js/wp-tevko-responsive-images.js', array( 'wp-backbone' ), '2.0.0', true );
-	}
-}
-add_action( 'admin_enqueue_scripts', 'tevkori_load_admin_scripts' );
-
-
-/**
- * Filter for the_content to replace data-size attributes with size attributes.
- *
- * @since 2.2.0
- *
- * @param string $content The raw post content to be filtered.
- */
-function tevkori_filter_content_sizes( $content ) {
-	$images = '/(<img\s.*?)data-sizes="([^"]+)"/i';
-	$sizes = '${2}';
-
-	return preg_replace( $images, '${1}sizes="' . $sizes . '"', $content );
-}
-add_filter( 'the_content', 'tevkori_filter_content_sizes' );
-
-
-/**
- * Ajax handler for updating the srcset when an image is changed in the editor.
+ * Filter to add php-respimg as an image editor.
  *
  * @since 2.3.0
  *
- * @return string A sourcest value.
- */
-function tevkori_ajax_srcset() {
-
-	// Bail early if no post ID is passed.
-	if ( empty( $_POST['postID'] ) ) {
-		return;
+ * @return array Editors.
+ **/
+function tevkori_wp_image_editors( $editors ) {
+	if ( current_theme_supports( 'advanced-image-compression' ) ) {
+		array_unshift( $editors, 'WP_Image_Editor_Respimg' );
 	}
 
-	$postID = (int) $_POST['postID'];
-	if ( ! $postID ) {
-		return;
-	}
-
-	// Grab the image size being passed from the AJAX request.
-	$size = empty( $_POST['size'] ) ? $_POST['size'] : '';
-
-	// Get the srcset value for our image.
-	$srcset = tevkori_get_srcset( $postID, $size );
-
-	// For AJAX requests, we echo the result and then die.
-	wp_send_json( $srcset );
+	return $editors;
 }
-add_action( 'wp_ajax_tevkori_ajax_srcset', 'tevkori_ajax_srcset' );
+add_filter( 'wp_image_editors', 'tevkori_wp_image_editors' );
