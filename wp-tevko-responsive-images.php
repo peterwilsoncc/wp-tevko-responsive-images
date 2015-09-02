@@ -316,7 +316,7 @@ function tevkori_filter_content_images( $content ) {
 		$content
 	);
 }
-add_filter( 'the_content', 'tevkori_filter_content_images', 999, 1 );
+add_filter( 'the_content', 'tevkori_filter_content_images', 5, 1 );
 
 /**
  * Callback function for tevkori_filter_content_images.
