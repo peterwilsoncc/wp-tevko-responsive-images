@@ -330,47 +330,43 @@ function tevkori_filter_content_images_callback( $matches ) {
 	$atts = $matches[1];
 	$sizes = $srcset = '';
 
-	// Get the value of the class attribute.
-	preg_match( '/class="([^"]+)"/i', $atts, $classes );
+	// Grab the image ID from the core class.
+	preg_match( '/wp-image-([0-9]+)/i', $atts, $id );
 
-	if ( $classes ) {
+	if ( $id ) {
+		$id = (int) $id[1];
 		
-		// Grab ID and size info from core classes.
-		preg_match( '/wp-image-([0-9]+)/i', $classes[1], $id );
-		preg_match( '/size-([^\s|"]+)\s|"/i', $classes[1], $size );
+		// Grab the size name from the core class.
+		preg_match( '/size-([^\s|"]+)\s|"/i', $atts, $size );
 
-		if ( $id ) {
-			$id = (int) $id[1];
+		// If a class with size name is present, use it.
+		if ( $size ) {
+			$size = $size[1];
 
-			// If a class with size name is present, use it.
-			if ( $size ) {
-				$size = $size[1];
+		// Otherwise create an array with the values from the width and height attributes.
+		} else {
+			preg_match( '/width="([0-9]+)"/', $atts, $width );
+			preg_match( '/height="([0-9]+)"/', $atts, $height );
 
-			// Otherwise create an array with the values from the width and height attributes.
-			} else {
-				preg_match( '/width="([0-9]+)"/', $atts, $width );
-				preg_match( '/height="([0-9]+)"/', $atts, $height );
+			$size = array(
+				(int) $width[1],
+				(int) $height[1]
+			);
+		}
 
-				$size = array(
-					(int) $width[1],
-					(int) $height[1]
-				);
-			}
+		if ( $size ) {
 
-			if ( $size ) {
-				
-				// Get the srcset string.
-				$srcset_string = tevkori_get_srcset_string( $id, $size );
+			// Get the srcset string.
+			$srcset_string = tevkori_get_srcset_string( $id, $size );
 
-				if ( $srcset_string && ! preg_match( '/srcset="([^"]+)"/i', $atts ) ) {
-					$srcset = ' ' . $srcset_string;
+			if ( $srcset_string && ! preg_match( '/srcset="([^"]+)"/i', $atts ) ) {
+				$srcset = ' ' . $srcset_string;
 
-					// Get the sizes string.
-					$sizes_string = tevkori_get_sizes_string( $id, $size );
-					
-					if ( $sizes_string && ! preg_match( '/sizes="([^"]+)"/i', $atts ) ) {
-						$sizes = ' ' . $sizes_string;
-					}
+				// Get the sizes string.
+				$sizes_string = tevkori_get_sizes_string( $id, $size );
+
+				if ( $sizes_string && ! preg_match( '/sizes="([^"]+)"/i', $atts ) ) {
+					$sizes = ' ' . $sizes_string;
 				}
 			}
 		}
