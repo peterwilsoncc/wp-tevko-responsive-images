@@ -66,7 +66,7 @@ function tevkori_get_picturefill() {
 	</script>
 	<?php
 }
-add_action( 'wp_enqueue_scripts', 'tevkori_get_picturefill' );
+add_action( 'wp_head', 'tevkori_get_picturefill' );
 
 /**
  * Return a source size attribute for an image from an array of values.
